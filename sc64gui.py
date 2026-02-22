@@ -1,7 +1,7 @@
 # sc64gui.py
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk, simpledialog, messagebox
-import subprocess, threading, os, sys, posixpath, json
+import subprocess, threading, os, sys, posixpath, json, re
 
 # High-DPI awareness
 try:
@@ -20,7 +20,7 @@ BTN = dict(bg=BG, fg=FG, activebackground=BG2, activeforeground=FG, font=FONT_BO
 BTN_WIDE = {**BTN, "width": 18}
 BTN_SM = {**BTN, "font": FONT_NORMAL, "width": 12}
 
-CONFIG_FILE = "sc64_settings.json"
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "sc64_settings.json")
 
 def deployer_path():
     base = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -129,10 +129,11 @@ class SC64Gui:
     def _tab_tools(self, nb):
         f = self._tab_frame(nb, "Tools")
         grid = tk.Frame(f, bg=BG); grid.pack(expand=True)
-        cmds = [("Check FW File", self.firmware_info), ("Update Firmware", self.firmware_update), 
-                ("Start Server", self.start_server), ("Dump Memory", self.dump_memory), ("64DD Mode", self.launch_64dd)]
-        for i, (txt, cmd) in enumerate(cmds):
-            row, col = divmod(i, 2); tk.Button(grid, text=txt, command=cmd, **BTN_WIDE).grid(row=row, column=col, padx=6, pady=6)
+        tk.Button(grid, text="Check FW File",   command=self.firmware_info,   **BTN_WIDE).grid(row=0, column=0, padx=6, pady=6)
+        tk.Button(grid, text="Update Firmware", command=self.firmware_update, **BTN_WIDE).grid(row=0, column=1, padx=6, pady=6)
+        tk.Button(grid, text="Start Server",    command=self.start_server,    **BTN_WIDE).grid(row=1, column=0, padx=6, pady=6)
+        tk.Button(grid, text="Dump Memory",     command=self.dump_memory,     **BTN_WIDE).grid(row=1, column=1, padx=6, pady=6)
+        tk.Button(grid, text="64DD Mode",       command=self.launch_64dd,     **BTN_WIDE).grid(row=2, column=0, columnspan=2, padx=6, pady=6)
 
     def _build_console(self):
         hdr = tk.Frame(self.root, bg=BG); hdr.pack(fill=tk.X, padx=16)
@@ -168,6 +169,8 @@ class SC64Gui:
         self.root.destroy()
 
     def _get_rom_name(self, path):
+        # Reads the N64 internal header assuming .z64 (big-endian) byte order.
+        # .n64 (little-endian) and .v64 (byte-swapped) ROMs will show garbled names.
         try:
             with open(path, 'rb') as f:
                 f.seek(0x20); name = f.read(20).decode('latin-1').strip()
@@ -182,24 +185,26 @@ class SC64Gui:
     def check_status(self):
         self.clear_log()
         self.log_sep("Device Info")
+        self.status_label.config(text="Scanning...", fg="#884400")
+        threading.Thread(target=self._check_status_worker, args=(self._conn_flags(),), daemon=True).start()
+
+    def _check_status_worker(self, conn_flags):
         try:
-            r = subprocess.run([deployer_path()] + self._conn_flags() + ["info"], 
+            r = subprocess.run([deployer_path()] + conn_flags + ["info"],
                                capture_output=True, text=True, encoding='utf-8')
             if r.returncode == 0:
-                self.log(r.stdout)
-                self.status_label.config(text="Connected", fg="#008800")
-                
-                import re
+                self.root.after(0, self.log, r.stdout)
                 diag = re.search(r"Diagnostic data:\s+(.*)", r.stdout)
                 status_msg = f"Ready. [{diag.group(1).strip()}]" if diag else "Ready."
-                self.sb(status_msg)
+                self.root.after(0, self.status_label.config, {"text": "Connected", "fg": "#008800"})
+                self.root.after(0, self.sb, status_msg)
             else:
-                self.log(r.stderr or "Device not found.\n", "err")
-                self.status_label.config(text="Disconnected", fg="#AA0000")
-                self.sb("Check connection.")
+                self.root.after(0, self.log, r.stderr or "Device not found.\n", "err")
+                self.root.after(0, self.status_label.config, {"text": "Disconnected", "fg": "#AA0000"})
+                self.root.after(0, self.sb, "Check connection.")
         except Exception as e:
-            self.status_label.config(text="Exe missing", fg="#AA0000")
-            self.log(f"Error checking status: {e}", "err")
+            self.root.after(0, self.status_label.config, {"text": "Exe missing", "fg": "#AA0000"})
+            self.root.after(0, self.log, f"Error checking status: {e}\n", "err")
 
     def run_cmd(self, args, label=None):
         self.clear_log()
@@ -238,42 +243,43 @@ class SC64Gui:
     def reset_device(self): self.run_cmd(["reset"])
     def sd_ls(self): self.run_cmd(["sd", "ls", self.sd_path.get()])
     def sd_upload(self):
-        l = filedialog.askopenfilename(title="Select file to upload")
+        l = filedialog.askopenfilename(title="Select file to upload to SD card")
         if l:
-            r = simpledialog.askstring("SD Path", "Dest:", initialvalue=posixpath.join(self.sd_path.get(), os.path.basename(l)))
+            r = simpledialog.askstring("SD Card", "Destination path on SD card:", initialvalue=posixpath.join(self.sd_path.get(), os.path.basename(l)))
             if r: self.run_cmd(["sd", "upload", l, r])
     def sd_download(self):
-        r = simpledialog.askstring("SD Path", "Select file to download", initialvalue=self.sd_path.get())
+        r = simpledialog.askstring("SD Card", "Remote file path to download:", initialvalue=self.sd_path.get())
         if r:
-            l = filedialog.asksaveasfilename(initialfile=os.path.basename(r))
+            l = filedialog.asksaveasfilename(initialfile=posixpath.basename(r))
             if l: self.run_cmd(["sd", "download", r, l])
     def sd_mkdir(self):
-        p = simpledialog.askstring("SD", "New Dir:", initialvalue=self.sd_path.get())
+        p = simpledialog.askstring("SD Card", "New directory path on SD card:", initialvalue=self.sd_path.get())
         if p: self.run_cmd(["sd", "mkdir", p])
     def sd_rm(self):
-        p = simpledialog.askstring("SD", "Delete:", initialvalue=self.sd_path.get())
-        if p and messagebox.askyesno("Delete", f"Confirm {p}?"): self.run_cmd(["sd", "rm", p])
+        p = simpledialog.askstring("SD Card", "Path to delete from SD card:", initialvalue=self.sd_path.get())
+        if p and messagebox.askyesno("Confirm Delete", f"Delete '{p}' from SD card?"): self.run_cmd(["sd", "rm", p])
     
     def firmware_info(self):
-        p = filedialog.askopenfilename(title="Select firmware .bin", filetypes=[("Firmware Binaries", "*.bin")])
+        p = filedialog.askopenfilename(title="Select firmware file to inspect", filetypes=[("Firmware files", "*.bin *.sc64"), ("All files", "*.*")])
         if p: self.run_cmd(["firmware", "info", p])
 
     def firmware_update(self):
-        p = filedialog.askopenfilename(title="Select update .bin", filetypes=[("Firmware Binaries", "*.bin")])
-        if p and messagebox.askyesno("Update", f"Confirm flash: {os.path.basename(p)}?"): 
+        p = filedialog.askopenfilename(title="Select firmware file to flash", filetypes=[("Firmware files", "*.bin *.sc64"), ("All files", "*.*")])
+        if p and messagebox.askyesno("Confirm Firmware Update", f"Flash '{os.path.basename(p)}' to device?\n\nThe device will reboot."):
             self.run_cmd(["firmware", "update", p])
-    
+
     def start_server(self): self.run_cmd(["server"])
     def dump_memory(self):
-        a = simpledialog.askstring("Dump", "Addr:", initialvalue="0x10000000")
-        l = simpledialog.askstring("Dump", "Len:", initialvalue="0x1000")
-        if a and l:
-            p = filedialog.asksaveasfilename(defaultextension=".bin")
-            if p: self.run_cmd(["dump", a, l, p])
+        a = simpledialog.askstring("Dump Memory", "Start address (e.g. 0x10000000):", initialvalue="0x10000000")
+        if not a: return
+        l = simpledialog.askstring("Dump Memory", "Length in bytes (e.g. 0x1000):", initialvalue="0x1000")
+        if not l: return
+        p = filedialog.asksaveasfilename(title="Save dump to...", defaultextension=".bin")
+        if p: self.run_cmd(["dump", a, l, p])
     def launch_64dd(self):
-        i = filedialog.askopenfilename(title="IPL ROM")
+        i = filedialog.askopenfilename(title="Select 64DD IPL ROM", filetypes=[("ROM files", "*.n64 *.z64 *.v64 *.bin"), ("All files", "*.*")])
         if i:
-            d = filedialog.askopenfilename(title="Disk (Optional)")
+            d = filedialog.askopenfilename(title="Select disk image (cancel to skip)", filetypes=[("Disk images", "*.ndd *.d64"), ("All files", "*.*")])
             self.run_cmd(["64dd", i, d] if d else ["64dd", i])
 
 if __name__ == "__main__":
