@@ -114,18 +114,18 @@ class SC64Gui:
         grid = tk.Frame(f, bg=BG)
         grid.pack(expand=True)
         
-        tk.Button(grid, text="Upload Rom", command=self.upload_rom, **BTN_WIDE).grid(row=0, column=0, padx=6, pady=6)
-        tk.Button(grid, text="Get Info", command=self.check_status, **BTN_WIDE).grid(row=0, column=1, padx=6, pady=6)
+        tk.Button(grid, text="Upload ROM", command=self.upload_rom, **BTN_WIDE).grid(row=0, column=0, padx=6, pady=6)
+        tk.Button(grid, text="Device Info", command=self.check_status, **BTN_WIDE).grid(row=0, column=1, padx=6, pady=6)
         tk.Button(grid, text="Download Save", command=self.download_save, **BTN_WIDE).grid(row=0, column=2, padx=6, pady=6)
         
-        tk.Button(grid, text="Sync Rtc", command=self.sync_rtc, **BTN_WIDE).grid(row=1, column=0, padx=6, pady=6)
-        tk.Button(grid, text="Reset Device", command=self.reset_device, **BTN_WIDE).grid(row=1, column=1, padx=6, pady=6)
+        tk.Button(grid, text="Sync RTC", command=self.sync_rtc, **BTN_WIDE).grid(row=1, column=0, padx=6, pady=6)
+        tk.Button(grid, text="Reset", command=self.reset_device, **BTN_WIDE).grid(row=1, column=1, padx=6, pady=6)
         tk.Button(grid, text="List Items", command=lambda: self.run_cmd(["list"]), **BTN_WIDE).grid(row=1, column=2, padx=6, pady=6)
         
         r3 = tk.Frame(f, bg=BG)
         r3.pack(pady=8)
-        tk.Button(r3, text="Led On", command=lambda: self.run_cmd(["set", "blink-on"]), **BTN_SM).pack(side=tk.LEFT, padx=3)
-        tk.Button(r3, text="Led Off", command=lambda: self.run_cmd(["set", "blink-off"]), **BTN_SM).pack(side=tk.LEFT, padx=3)
+        tk.Button(r3, text="LED Blink", command=lambda: self.run_cmd(["set", "blink-on"]), **BTN_SM).pack(side=tk.LEFT, padx=3)
+        tk.Button(r3, text="LED Off", command=lambda: self.run_cmd(["set", "blink-off"]), **BTN_SM).pack(side=tk.LEFT, padx=3)
 
     def _tab_sd(self, nb):
         f = self._tab_frame(nb, "SD Card")
@@ -135,8 +135,8 @@ class SC64Gui:
         tk.Button(path_row, text="List Dir", command=self.sd_ls, **BTN_SM).pack(side=tk.LEFT)
         
         grid = tk.Frame(f, bg=BG); grid.pack(pady=6, expand=True)
-        tk.Button(grid, text="Upload Rom", command=self.sd_upload, **BTN_WIDE).grid(row=0, column=0, padx=6, pady=6)
-        tk.Button(grid, text="Download Rom", command=self.sd_download, **BTN_WIDE).grid(row=0, column=1, padx=6, pady=6)
+        tk.Button(grid, text="Upload", command=self.sd_upload, **BTN_WIDE).grid(row=0, column=0, padx=6, pady=6)
+        tk.Button(grid, text="Download", command=self.sd_download, **BTN_WIDE).grid(row=0, column=1, padx=6, pady=6)
         tk.Button(grid, text="Make Dir", command=self.sd_mkdir, **BTN_WIDE).grid(row=1, column=0, padx=6, pady=6)
         tk.Button(grid, text="Remove Item", command=self.sd_rm, **BTN_WIDE).grid(row=1, column=1, padx=6, pady=6)
 
